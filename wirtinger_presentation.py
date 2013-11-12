@@ -7,21 +7,31 @@ class Box():
     def __init__(self, top=False, bottom=False, left=False, right=False, 
                  hh=False):
 
-        self.t = top
-        self.b = bottom
-        self.l = left
-        self.r = right
+        self.top = top
+        self.bottom = bottom
+        self.left = left
+        self.right = right
         self.hh = hh
 
     def relation(self):
-        if hh == 'tl':
-            return (self.b^-1)*(self.r^-1)*self.t*self.l
-        elif hh == 'tr':
-            return (self.l^-1)*(self.t^-1)*self.r*self.b
+        if self.hh == 'tl':
+            return (self.bottom, self.right, self.top, self.left)
+        elif self.hh == 'tr':
+            return (self.left, self.top, self.right, self.bottom)
 
     def __str__(self):
-        return str((self.t, self.b, self.l, self.r, self.hh))
+        return str((self.top, self.bottom, self.left, self.right, self.hh))
 
+    def __eq__(self, other):
+        if ((self.top == other.top) and 
+            (self.bottom == other.bottom) and
+            (self.left == other.left) and
+            (self.right == other.right) and 
+            (self.hh == other.hh)):
+            return True
+
+        return False
+        
 
 class Crossing():
 
@@ -39,9 +49,10 @@ class Wirtinger():
 
     def __init__(self, braid):
         self.braid = braid
+        self.strands = max(map(abs, self.braid))+1
 
         gens = []
-        c = 0
+        c = 1
         for i in range(0, len(self.braid)):
             gens.append('x'+str(c))
             c = c + 1
@@ -50,6 +61,7 @@ class Wirtinger():
         self.g.inject_variables()
 
         self.crossings = self.build_crossings()
+        self.boxes = self.build_boxes()
 
     def build_crossings(self):
 
@@ -86,27 +98,125 @@ class Wirtinger():
 
     def build_boxes(self):
 
-        gen = 0
         boxes = [Box() for i in range(0, len(self.braid))]
+        m = self.permutation()
+        g = 0
+        bottomtotop = False
 
-        strands = max(map(abs, self.braid))+1
-        
-        for s in range(1, strands+1):
+        for s in m:
             for i, j in enumerate(self.crossings):
-                if j.aos == s:
-                    boxes[i].top = self.g.gen(gen)
-                    print (i, self.g.gen(gen))
-                else:
-                    gen = (gen + 1)%len(self.braid)
+                if not bottomtotop:
+                    if j.aos == s:
+                        boxes[i].top = g
+                        boxes[i].bottom = g
+                    elif j.aus == s and self.braid[i] > 0:
+                        boxes[i].right = g
+                        g = (g + 1) % len(self.braid)
+                        boxes[i].left = g
+                    elif j.aus == s and self.braid[i] < 0:
+                        boxes[i].left = g
+                        g = (g + 1) % len(self.braid)
+                        boxes[i].right = g
+                elif bottomtotop:
+                    if j.aus == s:
+                        boxes[i].right = g
+                        g = (g + 1) % len(self.braid)
+                        boxes[i].left = g
+                    elif j.aos == s:
+                        boxes[i].top = g
+                        boxes[i].top = g
+                    bottomtotop = False
+            bottomtotop = True
+
+        for i in boxes:
+            if i.left == (i.right + 1) % len(self.braid):
+                i.hh = "tl"
+            elif i.right == (i.left + 1) % len(self.braid):
+                i.hh = "tr"
 
         return boxes
 
-b = [1, -2, 1, -2]
-w = Wirtinger(b)
+    def permutation(self):
+        self.strands = max(map(abs, self.braid))+1
+        
+        p = {i: PermutationGroupElement("("+str(i)+","+str(i+1)+")") 
+             for i in range(1, self.strands)}
 
-# for i in w.crossings:
-#     print i
+        f = PermutationGroupElement("()")
 
-boxes = w.build_boxes()
-for i in boxes:
-    print i
+        for i in self.braid:
+            if i < 0:
+                f = f*p[-1*i].inverse()
+            else:
+                f = f*p[i]
+
+        m = [1]+[f(i) for i in range(1, self.strands)]
+
+        return m
+
+    def gen_rel(self, r):
+        return self.g.gen(r[0]).inverse()*self.g.gen(r[1]).inverse() * \
+            self.g.gen(r[2])*self.g.gen(r[3])
+
+    def presentation(self):
+        rels = map(self.gen_rel, [i.relation() for i in self.boxes])
+        return self.g / rels
+
+
+def trefoil():
+    b = [1, 1, 1]
+    w = Wirtinger(b)
+
+    boxes = [Box(0, 0, 2, 1, "tl"),
+             Box(2, 2, 1, 0, "tl"), 
+             Box(1, 1, 0, 2, "tl")]
+
+    cboxes = w.build_boxes()
+
+    g = w.presentation()
+    return g.alexander_matrix()
+
+
+def figure8():
+    b = [1, -2, 1, -2]
+    w = Wirtinger(b)
+
+    boxes = [Box(0, 0, 2, 1, "tl"),
+             Box(3, 3, 0, 1, "tr"),
+             Box(2, 2, 0, 3, "tl"),
+             Box(1, 1, 2, 3, "tr")]
+
+    cboxes = w.build_boxes()
+
+    g = w.presentation()
+    print g.alexander_matrix()
+
+    return boxes == cboxes
+
+
+def k5_2():
+
+    b = [1, 1, 1, 2, -1, 2]
+    w = Wirtinger(b)
+
+    boxes = [Box(0, 0, 3, 2, "tl"), 
+             Box(3, 3, 1, 0, "tl"),
+             Box(1, 1, 4, 3, "tl"),
+             Box(1, 1, 0, 5, "tl"),
+             Box(0, 0, 4, 5, "tr"),
+             Box(5, 5, 2, 1, "tl")]
+
+    cboxes = w.build_boxes()
+
+    return boxes == cboxes
+
+
+def main():
+    if not trefoil():
+        print "Trefoil error"
+    if not figure8():
+        print "Figure 8 error"
+    if not k5_2():
+        print "5_2 error"
+
+main()
